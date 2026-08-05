@@ -1,0 +1,55 @@
+name: Build Unsigned IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (unsigned)
+        run: |
+          xcodebuild -project UrukStore.xcodeproj \
+            -scheme UrukStore \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/UrukStore.app Payload/
+          zip -r UrukStore.ipa Payload
+
+      - name: Upload build log (orphan branch)
+        if: always()
+        run: |
+          git checkout --orphan build-logs-${{ github.run_id }}
+          git rm -rf . > /dev/null 2>&1 || true
+          find build -name "*.log" -exec cp {} . \; 2>/dev/null || true
+          git add -A
+          git -c user.email="ci@urukstore.dev" -c user.name="UrukStore CI" \
+            commit -m "Build log for run ${{ github.run_id }}" || true
+          git push origin build-logs-${{ github.run_id }} || true
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UrukStore-unsigned
+          path: UrukStore.ipa
