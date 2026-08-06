@@ -11,6 +11,9 @@ struct RootTabView: View {
 
             SourcesView()
                 .tabItem { Label("Sources", systemImage: "tray.full.fill") }
+
+            AccountView()
+                .tabItem { Label("Account", systemImage: "person.crop.circle") }
         }
     }
 }

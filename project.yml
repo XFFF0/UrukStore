@@ -14,12 +14,20 @@ settings:
     DEVELOPMENT_TEAM: ""
     ENABLE_BITCODE: NO
 
+packages:
+  AltSign:
+    url: https://github.com/SideStore/AltSign.git
+    exactVersion: 1.0.3
+
 targets:
   UrukStore:
     type: application
     platform: iOS
     sources:
       - path: Sources/UrukStore
+    dependencies:
+      - package: AltSign
+        product: AltSign-Dynamic
     info:
       path: Sources/UrukStore/App/Info.plist
       properties:

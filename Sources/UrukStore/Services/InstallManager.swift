@@ -1,35 +1,71 @@
 import Foundation
 
 enum InstallError: Error, LocalizedError {
-    case notImplemented
+    case notSignedIn
+    case wirelessInstallNotImplemented
+    case downloadFailed
 
     var errorDescription: String? {
-        "Wireless install is not implemented in this build yet — see README roadmap."
+        switch self {
+        case .notSignedIn:
+            return "Sign in with your Apple ID in Settings first."
+        case .wirelessInstallNotImplemented:
+            return "App was signed successfully, but getting it onto the device without a cable isn't implemented yet — see README roadmap."
+        case .downloadFailed:
+            return "Couldn't download the app's IPA."
+        }
     }
 }
 
 @MainActor
 final class InstallManager: ObservableObject {
     @Published private(set) var installedApps: [InstalledApp] = []
+    @Published private(set) var signingIdentity: SigningIdentity?
 
-    private let signingService: SigningServicing
+    private var signingService: SigningServicing?
     private let storageKey = "urukstore.installed.apps"
 
-    init(signingService: SigningServicing = SigningService()) {
-        self.signingService = signingService
+    init() {
         load()
     }
 
-    /// End-to-end install flow (phase 2, currently unimplemented):
-    ///   1. Download the IPA from `StoreAppVersion.downloadURL`
-    ///   2. Resign it via `signingService`
-    ///   3. Push it to the device over the local network using the
-    ///      lockdown/AFC install protocol (same one Xcode's wireless
-    ///      debugging uses) — no cable or Mac required at install time
-    ///   4. Record it in `installedApps` with its 7-day expiration so the
-    ///      UI can warn before Apple's free-account signing expires
+    /// Call once, e.g. from Settings, before installing anything.
+    /// `anisetteServerURL` — see AnisetteClient.swift for what this needs to point to.
+    func signIn(appleID: String, password: String, anisetteServerURL: URL, twoFactorCodeProvider: @escaping () async -> String?) async throws {
+        let service = SigningService(anisetteServerURL: anisetteServerURL, twoFactorCodeProvider: twoFactorCodeProvider)
+        self.signingIdentity = try await service.authenticate(appleID: appleID, password: password)
+        self.signingService = service
+    }
+
+    /// Real flow as far as it currently goes:
+    ///   1. Download the IPA from `StoreAppVersion.downloadURL`               ✅ implemented
+    ///   2. Resign it via AltSign (real Apple Developer API calls)            ✅ implemented
+    ///   3. Push it to the device without a cable                            ❌ not implemented
+    ///   4. Track it here with its 7-day expiration                         (blocked on step 3)
+    ///
+    /// Step 3 is SideStore's "EM Proxy" — a VPN tunnel + on-device lockdown-
+    /// muxer replica that tricks iOS into accepting the install locally.
+    /// That's a project of its own; see README roadmap.
     func install(_ app: StoreApp, from source: Source) async throws {
-        throw InstallError.notImplemented
+        guard let signingService, let identity = signingIdentity else {
+            throw InstallError.notSignedIn
+        }
+        guard let version = app.latestVersion else { throw InstallError.downloadFailed }
+
+        let (downloadedURL, response) = try await URLSession.shared.download(from: version.downloadURL)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw InstallError.downloadFailed
+        }
+
+        let workingURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".ipa")
+        try FileManager.default.moveItem(at: downloadedURL, to: workingURL)
+
+        _ = try await signingService.resign(ipaURL: workingURL, identity: identity, bundleIdentifier: app.bundleIdentifier)
+
+        // Signing succeeded — the .ipa at workingURL is now signed and
+        // valid, but actually getting it onto the device (untethered)
+        // needs the EM Proxy-style tunnel described above.
+        throw InstallError.wirelessInstallNotImplemented
     }
 
     func daysUntilExpiration(for app: InstalledApp) -> Int? {
