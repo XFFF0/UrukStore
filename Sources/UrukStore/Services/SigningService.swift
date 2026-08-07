@@ -158,22 +158,38 @@ final class SigningService: SigningServicing {
             }
         }
 
-        // A free Apple ID account is limited to two active certificates
-        // total, shared across every app they sign with AltStore/SideStore/
-        // UrukStore/etc. If one already exists, reuse it — its private key
-        // only lives in this call's response, so this only works if we
-        // cached it from a previous run (not implemented yet: Keychain
-        // storage of certificate.privateKey). For now we always request a
-        // fresh certificate, which is correct on first run but will hit
-        // Apple's two-certificate limit on repeated runs until Keychain
-        // caching is added.
-        _ = existing
+        // A free/individual Apple ID account only allows a couple of active
+        // certificates at once — shared across every tool signing with this
+        // Apple ID (SideStore, AltStore, UrukStore, Xcode itself, etc). If
+        // we already have a cached private key for one of the existing
+        // certificates (a previous UrukStore run on this device), reuse it.
+        // Otherwise we can't sign with it (Apple only returns a cert's
+        // private key once, at creation time), so revoke it to make room
+        // and request a fresh one.
+        if let cached = existing.first(where: { CertificateKeychain.privateKey(forSerialNumber: $0.serialNumber) != nil }) {
+            cached.privateKey = CertificateKeychain.privateKey(forSerialNumber: cached.serialNumber)
+            return cached
+        }
+
+        for certificate in existing {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                ALTAppleAPI.shared.revoke(certificate, for: team, session: session) { success, error in
+                    if success { continuation.resume() }
+                    else { continuation.resume(throwing: error ?? SigningError.certificateFailed) }
+                }
+            }
+        }
 
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ALTCertificate, Error>) in
             ALTAppleAPI.shared.addCertificate(machineName: "UrukStore", to: team, session: session) { certificate, error in
-                if let error { continuation.resume(throwing: error) }
-                else if let certificate { continuation.resume(returning: certificate) }
-                else { continuation.resume(throwing: SigningError.certificateFailed) }
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let certificate {
+                    CertificateKeychain.savePrivateKey(certificate.privateKey, forSerialNumber: certificate.serialNumber)
+                    continuation.resume(returning: certificate)
+                } else {
+                    continuation.resume(throwing: SigningError.certificateFailed)
+                }
             }
         }
     }
