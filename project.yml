@@ -28,6 +28,8 @@ targets:
     dependencies:
       - package: AltSign
         product: AltSign-Dynamic
+        embed: true
+        codeSign: false
     info:
       path: Sources/UrukStore/App/Info.plist
       properties:
