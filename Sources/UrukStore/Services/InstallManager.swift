@@ -37,6 +37,35 @@ final class InstallManager: ObservableObject {
         self.signingService = service
     }
 
+    /// Signs a local .ipa (picked from Files) and saves the result into the
+    /// app's own Documents/Signed folder, returning its URL so the caller
+    /// can share it out (e.g. via ShareLink into LiveContainer, AirDrop, or
+    /// the Files app) — this works today without needing the wireless
+    /// install piece below, since importing a signed .ipa into a sideloading
+    /// container doesn't go through Apple's install protocol at all.
+    func signLocalIPA(at sourceURL: URL) async throws -> URL {
+        guard let signingService, let identity = signingIdentity else {
+            throw InstallError.notSignedIn
+        }
+
+        let bundleIdentifier = try IPAInspector.bundleIdentifier(ofIPAAt: sourceURL)
+
+        let workingURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".ipa")
+        try FileManager.default.copyItem(at: sourceURL, to: workingURL)
+
+        let signedURL = try await signingService.resign(ipaURL: workingURL, identity: identity, bundleIdentifier: bundleIdentifier)
+
+        let signedDirectory = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("Signed", isDirectory: true)
+        try FileManager.default.createDirectory(at: signedDirectory, withIntermediateDirectories: true)
+
+        let destinationURL = signedDirectory.appendingPathComponent(sourceURL.deletingPathExtension().lastPathComponent + "-signed.ipa")
+        try? FileManager.default.removeItem(at: destinationURL)
+        try FileManager.default.moveItem(at: signedURL, to: destinationURL)
+
+        return destinationURL
+    }
+
     /// Real flow as far as it currently goes:
     ///   1. Download the IPA from `StoreAppVersion.downloadURL`               ✅ implemented
     ///   2. Resign it via AltSign (real Apple Developer API calls)            ✅ implemented

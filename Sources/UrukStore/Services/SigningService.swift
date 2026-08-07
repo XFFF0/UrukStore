@@ -102,6 +102,19 @@ final class SigningService: SigningServicing {
         let team = identity.team
         let session = identity.session
 
+        // 0. .ipa is just a zip of Payload/<Name>.app — ALTSigner signs an
+        //    extracted .app bundle directory, not the .ipa file itself, so
+        //    unzip first and re-zip at the end.
+        let workDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: true)
+        try FileManager.default.unzipItem(at: ipaURL, to: workDirectory)
+
+        let payloadDirectory = workDirectory.appendingPathComponent("Payload", isDirectory: true)
+        guard let appName = try FileManager.default.contentsOfDirectory(atPath: payloadDirectory.path).first(where: { $0.hasSuffix(".app") }) else {
+            throw SigningError.signingFailed("No .app bundle found inside Payload/")
+        }
+        let appBundleURL = payloadDirectory.appendingPathComponent(appName)
+
         // 1. Reuse an existing certificate for this machine if one exists,
         //    otherwise request a new one (this also generates the private
         //    key and attaches it to the returned ALTCertificate).
@@ -119,16 +132,20 @@ final class SigningService: SigningServicing {
             }
         }
 
-        // 4. Sign the .app bundle in place with ldid (bundled inside AltSign).
+        // 4. Sign the extracted .app bundle in place with ldid (bundled inside AltSign).
         let signer = ALTSigner(team: team, certificate: certificate)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            _ = signer.signApp(at: ipaURL, provisioningProfiles: [profile]) { success, error in
+            _ = signer.signApp(at: appBundleURL, provisioningProfiles: [profile]) { success, error in
                 if success { continuation.resume() }
                 else { continuation.resume(throwing: SigningError.signingFailed(error?.localizedDescription ?? "unknown")) }
             }
         }
 
-        return ipaURL
+        // 5. Re-zip Payload/ (now containing the signed .app) into a fresh .ipa.
+        let signedIPAURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".ipa")
+        try FileManager.default.zipItem(at: payloadDirectory, to: signedIPAURL, shouldKeepParent: true)
+
+        return signedIPAURL
     }
 
     // MARK: - Private helpers

@@ -12,6 +12,9 @@ struct RootTabView: View {
             SourcesView()
                 .tabItem { Label("Sources", systemImage: "tray.full.fill") }
 
+            SignIPAView()
+                .tabItem { Label("Sign IPA", systemImage: "signature") }
+
             AccountView()
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
         }

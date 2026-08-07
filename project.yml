@@ -18,6 +18,9 @@ packages:
   AltSign:
     url: https://github.com/SideStore/AltSign.git
     exactVersion: 1.0.3
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    from: 0.9.19
 
 targets:
   UrukStore:
@@ -30,6 +33,7 @@ targets:
         product: AltSign-Dynamic
         embed: true
         codeSign: false
+      - package: ZIPFoundation
     info:
       path: Sources/UrukStore/App/Info.plist
       properties:
