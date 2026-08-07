@@ -185,7 +185,9 @@ final class SigningService: SigningServicing {
                 if let error {
                     continuation.resume(throwing: error)
                 } else if let certificate {
-                    CertificateKeychain.savePrivateKey(certificate.privateKey, forSerialNumber: certificate.serialNumber)
+                    if let privateKey = certificate.privateKey {
+                        CertificateKeychain.savePrivateKey(privateKey, forSerialNumber: certificate.serialNumber)
+                    }
                     continuation.resume(returning: certificate)
                 } else {
                     continuation.resume(throwing: SigningError.certificateFailed)
