@@ -22,6 +22,14 @@ struct AccountView: View {
                         Text("Team: \(identity.team.name)")
                             .foregroundStyle(.secondary)
                     }
+
+                    Section {
+                        Button("Sign Out", role: .destructive) {
+                            installManager.signOut()
+                        }
+                    } footer: {
+                        Text("Sessions aren't saved between launches yet, so you'll need to sign in again next time either way.")
+                    }
                 } else {
                     Section("Apple ID") {
                         TextField("Apple ID", text: $appleID)

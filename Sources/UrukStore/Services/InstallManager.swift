@@ -37,6 +37,11 @@ final class InstallManager: ObservableObject {
         self.signingService = service
     }
 
+    func signOut() {
+        signingIdentity = nil
+        signingService = nil
+    }
+
     /// Signs a local .ipa (picked from Files) and saves the result into the
     /// app's own Documents/Signed folder, returning its URL so the caller
     /// can share it out (e.g. via ShareLink into LiveContainer, AirDrop, or
