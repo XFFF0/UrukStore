@@ -37,7 +37,7 @@ struct AccountView: View {
                             .keyboardType(.URL)
                             .autocorrectionDisabled()
                     } footer: {
-                        Text("Needed to talk to Apple's Developer Services API. Self-host one (github.com/Dadoum/anisette-v3-server) or use a public server.")
+                        Text("Needed to talk to Apple's Developer Services API. Use one specific server's address (e.g. the default), not a servers.json list URL. Self-host your own: github.com/Dadoum/anisette-v3-server.")
                     }
 
                     Section {
