@@ -21,6 +21,9 @@ packages:
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation.git
     from: 0.9.19
+  Minimuxer:
+    url: https://github.com/SideStore/minimuxer.git
+    branch: develop
 
 targets:
   UrukStore:
@@ -34,6 +37,9 @@ targets:
         embed: true
         codeSign: false
       - package: ZIPFoundation
+      - package: Minimuxer
+        embed: true
+        codeSign: false
     info:
       path: Sources/UrukStore/App/Info.plist
       properties:
@@ -42,6 +48,7 @@ targets:
           - UIInterfaceOrientationPortrait
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: "UrukStore talks to your device over the local VPN tunnel (e.g. StosVPN) to install signed apps."
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
     settings:

@@ -15,6 +15,9 @@ struct RootTabView: View {
             SignIPAView()
                 .tabItem { Label("Sign IPA", systemImage: "signature") }
 
+            DeviceView()
+                .tabItem { Label("Device", systemImage: "iphone.and.arrow.forward") }
+
             AccountView()
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
         }
