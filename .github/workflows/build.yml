@@ -30,6 +30,7 @@ jobs:
 
       - name: Build (unsigned)
         run: |
+          set -o pipefail
           xcodebuild -project UrukStore.xcodeproj \
             -scheme UrukStore \
             -configuration Release \
@@ -38,24 +39,29 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            build
+            build 2>&1 | tee build.log
+
+      - name: Publish error log on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="build-fail-${{ github.run_number }}"
+          {
+            echo '```'
+            grep -n -B2 -A2 "error:" build.log | tail -c 60000
+            echo '```'
+          } > error-excerpt.md
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --title "Build FAILED #${{ github.run_number }}" \
+            --notes-file error-excerpt.md || true
 
       - name: Package IPA
         run: |
           mkdir -p Payload
           cp -r build/Build/Products/Release-iphoneos/UrukStore.app Payload/
           zip -r UrukStore.ipa Payload
-
-      - name: Upload build log (orphan branch)
-        if: always()
-        run: |
-          git checkout --orphan build-logs-${{ github.run_id }}
-          git rm -rf . > /dev/null 2>&1 || true
-          find build -name "*.log" -exec cp {} . \; 2>/dev/null || true
-          git add -A
-          git -c user.email="ci@urukstore.dev" -c user.name="UrukStore CI" \
-            commit -m "Build log for run ${{ github.run_id }}" || true
-          git push origin build-logs-${{ github.run_id }} || true
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
