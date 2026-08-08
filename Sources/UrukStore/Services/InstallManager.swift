@@ -2,14 +2,14 @@ import Foundation
 
 enum InstallError: Error, LocalizedError {
     case notSignedIn
-    case downloadFailed
+    case downloadFailed(URL, String)
 
     var errorDescription: String? {
         switch self {
         case .notSignedIn:
             return "Sign in with your Apple ID in Settings first."
-        case .downloadFailed:
-            return "Couldn't download the app's IPA."
+        case .downloadFailed(let url, let reason):
+            return "Couldn't download from \(url.host ?? url.absoluteString): \(reason)"
         }
     }
 }
@@ -93,6 +93,39 @@ final class InstallManager: ObservableObject {
         return destinationURL
     }
 
+    /// Some source CDNs (e.g. apps.altstore.io) sit behind bot-protection
+    /// that rejects requests without a normal-looking User-Agent, and a
+    /// plain background `URLSession.download(from:)` task is pickier about
+    /// server responses than a one-shot fetch — switched to `data(from:)`
+    /// for a simpler, more tolerant path with the actual failure surfaced
+    /// instead of a bare NSURLErrorDomain code.
+    private static func downloadIPA(from url: URL) async throws -> URL {
+        var request = URLRequest(url: url)
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            forHTTPHeaderField: "User-Agent"
+        )
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw InstallError.downloadFailed(url, error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw InstallError.downloadFailed(url, "no HTTP response")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw InstallError.downloadFailed(url, "HTTP \(http.statusCode)")
+        }
+
+        let workingURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".ipa")
+        try data.write(to: workingURL)
+        return workingURL
+    }
+
     /// Full flow: download -> sign -> push to device over the local VPN
     /// tunnel via minimuxer (same mechanism SideStore uses with StosVPN +
     /// an imported pairing file) -> install.
@@ -100,15 +133,11 @@ final class InstallManager: ObservableObject {
         guard let signingService, let identity = signingIdentity else {
             throw InstallError.notSignedIn
         }
-        guard let version = app.latestVersion else { throw InstallError.downloadFailed }
-
-        let (downloadedURL, response) = try await URLSession.shared.download(from: version.downloadURL)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw InstallError.downloadFailed
+        guard let version = app.latestVersion else {
+            throw InstallError.downloadFailed(source.website ?? URL(string: "about:blank")!, "no downloadable version listed")
         }
 
-        let workingURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".ipa")
-        try FileManager.default.moveItem(at: downloadedURL, to: workingURL)
+        let workingURL = try await Self.downloadIPA(from: version.downloadURL)
 
         let signedURL = try await signingService.resign(ipaURL: workingURL, identity: identity, bundleIdentifier: app.bundleIdentifier)
         let signedData = try Data(contentsOf: signedURL)
