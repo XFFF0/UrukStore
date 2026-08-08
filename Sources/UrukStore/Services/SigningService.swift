@@ -273,7 +273,7 @@ final class SigningService: SigningServicing {
 
     func revokeAppID(_ appID: ALTAppID, identity: SigningIdentity) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            ALTAppleAPI.shared.deleteAppID(appID, forTeam: identity.team, session: identity.session) { success, error in
+            ALTAppleAPI.shared.delete(appID, for: identity.team, session: identity.session) { success, error in
                 if success { continuation.resume() }
                 else { continuation.resume(throwing: error ?? SigningError.appIDFailed) }
             }
