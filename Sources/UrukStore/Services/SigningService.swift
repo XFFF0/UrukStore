@@ -41,6 +41,8 @@ protocol SigningServicing {
     func authenticate(appleID: String, password: String) async throws -> SigningIdentity
     func restoreSession() async throws -> SigningIdentity
     func resign(ipaURL: URL, identity: SigningIdentity, bundleIdentifier: String) async throws -> URL
+    func fetchAppIDs(identity: SigningIdentity) async throws -> [ALTAppID]
+    func revokeAppID(_ appID: ALTAppID, identity: SigningIdentity) async throws
 }
 
 /// Real implementation backed by AltSign (https://github.com/SideStore/AltSign),
@@ -248,10 +250,24 @@ final class SigningService: SigningServicing {
         }
 
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ALTAppID, Error>) in
-            ALTAppleAPI.shared.addAppID(withName: "UrukStore App", bundleIdentifier: bundleIdentifier, team: team, session: session) { appID, error in
+    /// Lists every App ID currently registered on this team — useful since
+    /// free accounts only get 10 new App ID registrations per week, so
+    /// being able to see and revoke old ones (e.g. from earlier signing
+    /// attempts, or other tools like SideStore) matters in practice.
+    func fetchAppIDs(identity: SigningIdentity) async throws -> [ALTAppID] {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[ALTAppID], Error>) in
+            ALTAppleAPI.shared.fetchAppIDs(for: identity.team, session: identity.session) { appIDs, error in
                 if let error { continuation.resume(throwing: error) }
-                else if let appID { continuation.resume(returning: appID) }
-                else { continuation.resume(throwing: SigningError.appIDFailed) }
+                else { continuation.resume(returning: appIDs ?? []) }
+            }
+        }
+    }
+
+    func revokeAppID(_ appID: ALTAppID, identity: SigningIdentity) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            ALTAppleAPI.shared.deleteAppID(appID, for: identity.team, session: identity.session) { success, error in
+                if success { continuation.resume() }
+                else { continuation.resume(throwing: error ?? SigningError.appIDFailed) }
             }
         }
     }

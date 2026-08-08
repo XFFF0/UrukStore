@@ -1,4 +1,5 @@
 import Foundation
+import AltSign
 
 enum InstallError: Error, LocalizedError {
     case notSignedIn
@@ -75,6 +76,16 @@ final class InstallManager: ObservableObject {
         signingIdentity = nil
         signingService = nil
         SessionKeychain.clear()
+    }
+
+    func fetchAppIDs() async throws -> [ALTAppID] {
+        guard let signingService, let identity = signingIdentity else { throw InstallError.notSignedIn }
+        return try await signingService.fetchAppIDs(identity: identity)
+    }
+
+    func revokeAppID(_ appID: ALTAppID) async throws {
+        guard let signingService, let identity = signingIdentity else { throw InstallError.notSignedIn }
+        try await signingService.revokeAppID(appID, identity: identity)
     }
 
     /// Signs a local .ipa and, if a pairing file has been imported (see

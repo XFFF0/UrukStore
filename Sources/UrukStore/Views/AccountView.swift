@@ -28,6 +28,9 @@ struct AccountView: View {
                         Text(identity.account.appleID)
                         Text("Team: \(identity.team.name)")
                             .foregroundStyle(.secondary)
+                        NavigationLink("App IDs") {
+                            AppIDsView()
+                        }
                     }
 
                     Section {
