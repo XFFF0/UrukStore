@@ -11,7 +11,7 @@ struct DeviceView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Pairing File") {
+                Section {
                     if connection.hasPairingFile {
                         Label("Pairing file imported", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
@@ -23,6 +23,8 @@ struct DeviceView: View {
                     Button("Import Pairing File") {
                         isPickingFile = true
                     }
+                } header: {
+                    Text("Pairing File")
                 } footer: {
                     Text("A .mobiledevicepairing file trusts UrukStore to install apps directly, the same way SideStore does. Get docs.sidestore.io/docs/advanced/pairing-file if you don't have one.")
                 }

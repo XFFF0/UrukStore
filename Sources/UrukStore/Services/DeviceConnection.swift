@@ -8,6 +8,15 @@ import Combine
 /// or shared state needed — just this one well-known IP.
 private let localVPNPeerIP = "10.7.0.1"
 
+/// Plain (non-isolated) config values read from Sendable closures handed
+/// to minimuxer. Kept separate from the @MainActor published state below
+/// so those closures don't have to cross actor isolation to read them.
+enum StaticConnectionConfig {
+    static let overrideTunnelPeerIp = localVPNPeerIP
+    static let remoteServerIp = localVPNPeerIP
+    static let useLocalVPN = true
+}
+
 @MainActor
 final class ConnectionConfig: ObservableObject {
     static let shared = ConnectionConfig()
@@ -17,10 +26,6 @@ final class ConnectionConfig: ObservableObject {
     @Published var tunnelPeerIp: String?
     @Published var overrideTunnelPeerReachable = false
     @Published var remoteReachable = false
-
-    var overrideTunnelPeerIp: String = localVPNPeerIP
-    var remoteServerIp: String = localVPNPeerIP
-    var useLocalVPN = true
 }
 
 enum DeviceConnectionError: Error, LocalizedError {
@@ -72,11 +77,11 @@ final class DeviceConnection: ObservableObject {
             setTunnelIfaceIp: { value in Task { @MainActor in config.tunnelIfaceIp = value } },
             setTunnelPeerIp: { value in Task { @MainActor in config.tunnelPeerIp = value } },
             setTunnelIfaceSubnetMask: { value in Task { @MainActor in config.tunnelIfaceSubnetMask = value } },
-            getRemoteServerIp: { config.remoteServerIp },
+            getRemoteServerIp: { StaticConnectionConfig.remoteServerIp },
             setRemoteReachable: { value in Task { @MainActor in config.remoteReachable = value } },
-            getOverrideTunnelPeerIp: { config.overrideTunnelPeerIp },
+            getOverrideTunnelPeerIp: { StaticConnectionConfig.overrideTunnelPeerIp },
             setOverrideTunnelPeerReachable: { value in Task { @MainActor in config.overrideTunnelPeerReachable = value } },
-            getConnectionMode: { config.useLocalVPN ? .localVPN : .remoteServer }
+            getConnectionMode: { StaticConnectionConfig.useLocalVPN ? .localVPN : .remoteServer }
         )
         await Minimuxer.shared.bindConnectionConfig(binding)
     }
