@@ -38,8 +38,6 @@ targets:
         codeSign: false
       - package: ZIPFoundation
       - package: Minimuxer
-        embed: true
-        codeSign: false
     info:
       path: Sources/UrukStore/App/Info.plist
       properties:
