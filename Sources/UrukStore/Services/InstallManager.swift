@@ -3,6 +3,7 @@ import Foundation
 enum InstallError: Error, LocalizedError {
     case notSignedIn
     case downloadFailed(URL, String)
+    case stageFailed(String, String)
 
     var errorDescription: String? {
         switch self {
@@ -10,7 +11,23 @@ enum InstallError: Error, LocalizedError {
             return "Sign in with your Apple ID in Settings first."
         case .downloadFailed(let url, let reason):
             return "Couldn't download from \(url.host ?? url.absoluteString): \(reason)"
+        case .stageFailed(let stage, let reason):
+            return "Failed during \(stage): \(reason)"
         }
+    }
+}
+
+/// Runs a throwing step and, if it fails, rethrows with the stage name
+/// attached — so an error onscreen says e.g. "Failed during device
+/// install: ..." instead of a bare NSURLErrorDomain code with no context
+/// about which of the several network calls in the pipeline caused it.
+private func stage<T>(_ name: String, _ work: () async throws -> T) async throws -> T {
+    do {
+        return try await work()
+    } catch let error as InstallError {
+        throw error
+    } catch {
+        throw InstallError.stageFailed(name, error.localizedDescription)
     }
 }
 
@@ -75,11 +92,15 @@ final class InstallManager: ObservableObject {
         let workingURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".ipa")
         try FileManager.default.copyItem(at: sourceURL, to: workingURL)
 
-        let signedURL = try await signingService.resign(ipaURL: workingURL, identity: identity, bundleIdentifier: bundleIdentifier)
+        let signedURL = try await stage("signing") {
+            try await signingService.resign(ipaURL: workingURL, identity: identity, bundleIdentifier: bundleIdentifier)
+        }
 
         if DeviceConnection.shared.hasPairingFile {
             let signedData = try Data(contentsOf: signedURL)
-            try await DeviceConnection.shared.install(ipaData: signedData, bundleIdentifier: bundleIdentifier)
+            try await stage("device install") {
+                try await DeviceConnection.shared.install(ipaData: signedData, bundleIdentifier: bundleIdentifier)
+            }
         }
 
         let signedDirectory = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -139,10 +160,14 @@ final class InstallManager: ObservableObject {
 
         let workingURL = try await Self.downloadIPA(from: version.downloadURL)
 
-        let signedURL = try await signingService.resign(ipaURL: workingURL, identity: identity, bundleIdentifier: app.bundleIdentifier)
+        let signedURL = try await stage("signing") {
+            try await signingService.resign(ipaURL: workingURL, identity: identity, bundleIdentifier: app.bundleIdentifier)
+        }
         let signedData = try Data(contentsOf: signedURL)
 
-        try await DeviceConnection.shared.install(ipaData: signedData, bundleIdentifier: app.bundleIdentifier)
+        try await stage("device install") {
+            try await DeviceConnection.shared.install(ipaData: signedData, bundleIdentifier: app.bundleIdentifier)
+        }
 
         let installed = InstalledApp(
             id: UUID(),
