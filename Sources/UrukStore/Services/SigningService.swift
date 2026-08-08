@@ -39,6 +39,7 @@ struct SigningIdentity {
 
 protocol SigningServicing {
     func authenticate(appleID: String, password: String) async throws -> SigningIdentity
+    func restoreSession() async throws -> SigningIdentity
     func resign(ipaURL: URL, identity: SigningIdentity, bundleIdentifier: String) async throws -> URL
 }
 
@@ -95,6 +96,44 @@ final class SigningService: SigningServicing {
         }
 
         guard let team = teams.first else { throw SigningError.noTeamsFound }
+
+        SessionKeychain.save(PersistedSession(
+            appleID: account.appleID,
+            accountIdentifier: account.identifier,
+            firstName: account.firstName,
+            lastName: account.lastName,
+            teamName: team.name,
+            teamIdentifier: team.identifier,
+            teamType: team.type.rawValue,
+            dsid: session.dsid,
+            authToken: session.authToken
+        ))
+
+        return SigningIdentity(account: account, team: team, session: session)
+    }
+
+    /// Rebuilds a session from the dsid/authToken saved in Keychain — Apple's
+    /// session tokens outlive any single anisette payload, so a fresh one is
+    /// fetched here rather than trying to reuse whatever was used at login.
+    func restoreSession() async throws -> SigningIdentity {
+        guard let saved = SessionKeychain.load() else {
+            throw SigningError.noTeamsFound
+        }
+
+        let account = ALTAccount()
+        account.appleID = saved.appleID
+        account.identifier = saved.accountIdentifier
+        account.firstName = saved.firstName
+        account.lastName = saved.lastName
+
+        guard let teamType = ALTTeamType(rawValue: saved.teamType) else {
+            throw SigningError.noTeamsFound
+        }
+        let team = ALTTeam(name: saved.teamName, identifier: saved.teamIdentifier, type: teamType, account: account)
+
+        let anisette = try await AnisetteClient(serverURL: anisetteServerURL).fetch()
+        let session = ALTAppleAPISession(dsid: saved.dsid, authToken: saved.authToken, anisetteData: anisette)
+
         return SigningIdentity(account: account, team: team, session: session)
     }
 

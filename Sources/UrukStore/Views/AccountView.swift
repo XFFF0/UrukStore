@@ -16,7 +16,14 @@ struct AccountView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if let identity = installManager.signingIdentity {
+                if installManager.isRestoringSession {
+                    Section {
+                        HStack {
+                            ProgressView()
+                            Text("Restoring session…")
+                        }
+                    }
+                } else if let identity = installManager.signingIdentity {
                     Section("Signed In") {
                         Text(identity.account.appleID)
                         Text("Team: \(identity.team.name)")
@@ -28,7 +35,7 @@ struct AccountView: View {
                             installManager.signOut()
                         }
                     } footer: {
-                        Text("Sessions aren't saved between launches yet, so you'll need to sign in again next time either way.")
+                        Text("You'll stay signed in next time you open UrukStore.")
                     }
                 } else {
                     Section("Apple ID") {

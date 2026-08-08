@@ -18,25 +18,46 @@ enum InstallError: Error, LocalizedError {
 final class InstallManager: ObservableObject {
     @Published private(set) var installedApps: [InstalledApp] = []
     @Published private(set) var signingIdentity: SigningIdentity?
+    @Published private(set) var isRestoringSession = false
 
     private var signingService: SigningServicing?
     private let storageKey = "urukstore.installed.apps"
+    private let anisetteURLKey = "urukstore.anisette.serverURL"
 
     init() {
         load()
+        Task { await restoreSessionIfPossible() }
     }
 
     /// Call once, e.g. from Settings, before installing anything.
     /// `anisetteServerURL` — see AnisetteClient.swift for what this needs to point to.
     func signIn(appleID: String, password: String, anisetteServerURL: URL, twoFactorCodeProvider: @escaping () async -> String?) async throws {
+        UserDefaults.standard.set(anisetteServerURL.absoluteString, forKey: anisetteURLKey)
         let service = SigningService(anisetteServerURL: anisetteServerURL, twoFactorCodeProvider: twoFactorCodeProvider)
         self.signingIdentity = try await service.authenticate(appleID: appleID, password: password)
         self.signingService = service
     }
 
+    /// Rebuilds the session from Keychain on launch, so signing back in
+    /// after force-quitting the app isn't needed every time.
+    private func restoreSessionIfPossible() async {
+        guard SessionKeychain.load() != nil,
+              let urlString = UserDefaults.standard.string(forKey: anisetteURLKey),
+              let anisetteServerURL = URL(string: urlString) else { return }
+
+        isRestoringSession = true
+        let service = SigningService(anisetteServerURL: anisetteServerURL)
+        if let identity = try? await service.restoreSession() {
+            self.signingIdentity = identity
+            self.signingService = service
+        }
+        isRestoringSession = false
+    }
+
     func signOut() {
         signingIdentity = nil
         signingService = nil
+        SessionKeychain.clear()
     }
 
     /// Signs a local .ipa and, if a pairing file has been imported (see
